@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config(); 
 
 const bodyParser   = require('body-parser');
 const cookieParser = require('cookie-parser');
@@ -10,8 +10,25 @@ const logger       = require('morgan');
 const path         = require('path');
 
 
+// Session middleware packages
+const session = require("express-session");
+const MongoStore = require("connect-mongo")(session);
+
+const indexRouter = require("./routes/index-router");
+const authRouter = require("./routes/auth-router");
+const siteRouter = require("./routes/site-router");
+
+const app = express();
+const DB_NAME = "basic-auth";
+
+// MONGOOSE CONNECTION
+
 mongoose
-  .connect('mongodb://localhost/starter-code', {useNewUrlParser: true})
+  .connect(`mongodb://localhost:27017/${DB_NAME}`, {
+    useNewUrlParser: true, 
+    useUnifiedTopology: true, 
+    useCreateIndex: true, 
+  })
   .then(x => {
     console.log(`Connected to Mongo! Database name: "${x.connections[0].name}"`)
   })
@@ -22,13 +39,35 @@ mongoose
 const app_name = require('./package.json').name;
 const debug = require('debug')(`${app_name}:${path.basename(__filename).split('.')[0]}`);
 
-const app = express();
-
 // Middleware Setup
 app.use(logger('dev'));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(cookieParser());
+
+
+// SESSION MIDDLEWARE
+// Checks incoming request: if there is a cookie, and if cookie has valid session id
+app.use(
+  session({
+    secret: "supercalifragilistichespiralidoso",
+    resave: true,
+    saveUninitialized: false,
+    store: new MongoStore({
+      mongooseConnection: mongoose.connection,
+      ttl: 7 * 24 * 60 * 60, // Default value - 14 days
+    }),
+  })
+);
+
+// ROUTES
+app.use("/", indexRouter);
+app.use("/auth", authRouter);
+app.use("/", siteRouter);
+
+
+
+
 
 // Express View engine setup
 
@@ -51,8 +90,22 @@ app.locals.title = 'Express - Generated with IronGenerator';
 
 
 
-const index = require('./routes/index');
-app.use('/', index);
 
+
+// catch 404 and forward to error handler
+app.use(function (req, res, next) {
+  next(createError(404));
+});
+
+// error handler
+app.use(function (err, req, res, next) {
+  // set locals, only providing error in development
+  res.locals.message = err.message;
+  res.locals.error = req.app.get("env") === "development" ? err : {};
+
+  // render the error page
+  res.status(err.status || 500);
+  res.render("error");
+});
 
 module.exports = app;
